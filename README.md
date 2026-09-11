@@ -7,12 +7,12 @@ The original deployment keeps an organizational calendar current without requiri
 ## Highlights
 
 - Fetches event profiles from the CCB/Pushpay API
-- Parses XML event data into normalized Python dictionaries
-- Transfers schedules, locations, organizers, notes, and event metadata
-- Converts CCB recurrence descriptions into Google Calendar `RRULE` recurrence rules
+- Parses XML event data into Python dictionaries
+- Transfers schedules, locations, organizers, notes, and other event metadata
+- Parses recurring-event descriptions and builds Google Calendar `RRULE` values
 - Stores each CCB event ID as a private Google Calendar extended property
-- Reconciles source and destination records so existing events are updated instead of duplicated
-- Tracks created, updated, skipped, and failed records
+- Checks for an existing Google Calendar event before deciding whether to create or update it
+- Tracks created, updated, skipped, and failed records during synchronization
 - Designed for scheduled execution with GitHub Actions
 
 The production deployment has handled **1,200+ event records** and accumulated **thousands of scheduled GitHub Actions workflow runs**.
@@ -26,24 +26,37 @@ CCB / Pushpay API
        v
    Python Sync
    ├── XML parsing
-   ├── data transformation
+   ├── event transformation
    ├── recurrence parsing
-   └── event reconciliation
+   └── create/update reconciliation
        |
        | Google Calendar API + OAuth 2.0
        v
 Google Calendar
 ```
 
-## Preventing duplicates
+## Event reconciliation
 
-Each Google Calendar event stores its corresponding CCB event ID as a private extended property. Before creating an event, the sync searches Google Calendar for that source ID. If it exists, the event is updated; otherwise, a new event is created.
+Each Google Calendar event stores its corresponding CCB event ID in a private extended property:
 
-This makes repeated synchronization runs safe and prevents duplicate calendar entries.
+```text
+ccb_event_id=<source event id>
+```
+
+During synchronization, the script searches Google Calendar for that CCB event ID. If a matching event is found, the event is updated. If no match is found, a new event is created.
+
+This allows repeated synchronization runs to keep existing calendar entries current instead of blindly creating a new event every time.
 
 ## Recurring events
 
-CCB recurrence descriptions are parsed and translated into Google Calendar recurrence rules. The implementation handles daily, weekly, and monthly patterns, intervals, selected weekdays, ordinal monthly patterns, and end dates.
+The script reads CCB recurrence descriptions and extracts fields such as:
+
+- recurrence frequency (`DAILY`, `WEEKLY`, or `MONTHLY`)
+- interval values such as every 2 weeks
+- selected weekdays
+- recurrence end dates
+
+Those values are then used to build Google Calendar `RRULE` strings when the recurrence pattern is recognized by the parser.
 
 For example:
 
@@ -51,7 +64,7 @@ For example:
 Every week on Sunday until Dec 22, 2026
 ```
 
-can be converted to a recurrence rule similar to:
+can be translated to a rule similar to:
 
 ```text
 RRULE:FREQ=WEEKLY;BYDAY=SU;UNTIL=20261222T235959Z
@@ -87,19 +100,35 @@ The first local run opens the Google OAuth consent flow. The generated `token.js
 | `CCB_USERNAME` | CCB API username |
 | `CCB_PASSWORD` | CCB API password |
 | `CCB_BASE_URL` | Base URL for the CCB API |
-| `GOOGLE_CALENDAR_ID` | Destination calendar; defaults to `primary` |
-| `MINISTRY_EMAIL_MAP_JSON` | Optional JSON mapping from source resource names to calendar/email addresses |
+| `GOOGLE_CALENDAR_ID` | Destination Google Calendar ID; defaults to `primary` |
+| `MINISTRY_EMAIL_MAP_JSON` | Optional JSON mapping from source resource/ministry names to calendar email addresses |
 | `GOOGLE_CREDENTIALS_FILE` | Optional OAuth client-credentials path |
 | `GOOGLE_TOKEN_FILE` | Optional stored-token path |
 
+Example mapping:
+
+```json
+{
+  "Example Ministry": "example-calendar@group.calendar.google.com"
+}
+```
+
 ## GitHub Actions
 
-`examples/sync.yml` demonstrates the scheduled automation structure without including production secrets. For an actual deployment, store credentials in GitHub Actions Secrets and never commit `.env`, `credentials.json`, or `token.json`.
+`examples/sync.yml` demonstrates the scheduled automation structure without including production secrets. For an actual deployment, credentials should be stored in GitHub Actions Secrets rather than committed to the repository.
 
 ## Security
 
-This repository intentionally contains **no production credentials or private event data**. If a secret is ever committed, deleting the file in a later commit is not enough: revoke/rotate it and remove it from Git history before publishing the repository.
+This repository intentionally contains **no production credentials or private event data**.
+
+Files such as the following should remain private and are excluded from version control:
+
+- `.env`
+- `credentials.json`
+- `token.json`
+- production API credentials
+- production calendar identifiers and configuration
 
 ## Portfolio note
 
-This is a sanitized version of a real automation project. Production-specific configuration and organizational data remain private.
+This repository is a sanitized version of a real automation project. Production-specific configuration, credentials, and organizational data remain private.
