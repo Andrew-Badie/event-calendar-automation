@@ -1,97 +1,109 @@
-# CCB / Pushpay → Google Calendar Sync
+# CCB / Pushpay to Google Calendar Sync
 
-A sanitized portfolio version of a production Python automation that synchronizes event records from CCB/Pushpay into Google Calendar.
+This is a public, sanitized version of a Python project I built to sync event data from CCB/Pushpay into Google Calendar.
 
-The original deployment keeps an organizational calendar current without requiring staff to manually recreate events. This public version intentionally excludes production credentials, private calendar IDs, event data, and deployment history.
+The private version is used to keep an organizational calendar up to date without having to manually recreate the same events in Google Calendar. I removed production credentials, calendar IDs, event data, and other private configuration from this repository.
 
-## Highlights
+The production project has handled **1,200+ event records** and has run automatically through GitHub Actions thousands of times.
+
+## What it does
 
 - Fetches event profiles from the CCB/Pushpay API
-- Parses XML event data into Python dictionaries
-- Transfers schedules, locations, organizers, notes, and other event metadata
-- Parses recurring-event descriptions and builds Google Calendar `RRULE` values
-- Stores each CCB event ID as a private Google Calendar extended property
-- Checks for an existing Google Calendar event before deciding whether to create or update it
-- Tracks created, updated, skipped, and failed records during synchronization
-- Designed for scheduled execution with GitHub Actions
+- Parses the XML response into Python dictionaries
+- Transfers event details such as dates, locations, organizers, descriptions, and notes
+- Parses supported recurrence descriptions and builds Google Calendar `RRULE` values
+- Stores the CCB event ID on the matching Google Calendar event
+- Checks whether an event already exists before creating a new one
+- Updates existing events when a matching CCB event is found
+- Tracks how many events were created, updated, skipped, or failed
 
-The production deployment has handled **1,200+ event records** and accumulated **thousands of scheduled GitHub Actions workflow runs**.
-
-## Architecture
+## How the sync works
 
 ```text
 CCB / Pushpay API
        |
-       | HTTP + XML
+       | XML event data
        v
-   Python Sync
-   ├── XML parsing
-   ├── event transformation
-   ├── recurrence parsing
-   └── create/update reconciliation
+   Python script
+   ├── parse event data
+   ├── transform fields
+   ├── parse recurrence information
+   └── check for existing events
        |
-       | Google Calendar API + OAuth 2.0
+       | Google Calendar API
        v
 Google Calendar
 ```
 
-## Event reconciliation
+The script uses the Google Calendar API with OAuth 2.0 for authentication.
 
-Each Google Calendar event stores its corresponding CCB event ID in a private extended property:
+## Avoiding duplicate events
+
+Each Google Calendar event created by the script stores its CCB event ID as a private extended property:
 
 ```text
 ccb_event_id=<source event id>
 ```
 
-During synchronization, the script searches Google Calendar for that CCB event ID. If a matching event is found, the event is updated. If no match is found, a new event is created.
+Before creating an event, the script searches Google Calendar for that ID. If it finds a match, it updates the existing event. If it does not find one, it creates a new event.
 
-This allows repeated synchronization runs to keep existing calendar entries current instead of blindly creating a new event every time.
+This lets the sync run repeatedly without intentionally creating a new copy of every event each time.
 
 ## Recurring events
 
-The script reads CCB recurrence descriptions and extracts fields such as:
+CCB provides recurrence information as text. The script parses supported patterns to extract information such as:
 
-- recurrence frequency (`DAILY`, `WEEKLY`, or `MONTHLY`)
-- interval values such as every 2 weeks
+- frequency: daily, weekly, or monthly
+- intervals, such as every 2 weeks
 - selected weekdays
-- recurrence end dates
+- an end date when one is present
 
-Those values are then used to build Google Calendar `RRULE` strings when the recurrence pattern is recognized by the parser.
+It then uses those values to build a Google Calendar `RRULE` when the pattern is recognized by the parser.
 
-For example:
+For example, a description such as:
 
 ```text
 Every week on Sunday until Dec 22, 2026
 ```
 
-can be translated to a rule similar to:
+can produce a rule similar to:
 
 ```text
 RRULE:FREQ=WEEKLY;BYDAY=SU;UNTIL=20261222T235959Z
 ```
 
+Not every possible recurrence format is handled by the current parser.
+
 ## Technologies
 
-Python · Requests · lxml · Google Calendar API · OAuth 2.0 · XML · GitHub Actions · python-dotenv · pytz
+- Python
+- Requests
+- lxml
+- Google Calendar API
+- OAuth 2.0
+- XML
+- GitHub Actions
+- python-dotenv
+- pytz
 
-## Local setup
+## Running it locally
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
+1. Create and activate a Python virtual environment.
+2. Install the dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Copy `.env.example` to `.env` and provide your own development credentials.
-4. Create a Google OAuth desktop application and save its client credentials locally as `credentials.json`.
-5. Run:
+3. Copy `.env.example` to `.env` and add your own CCB API configuration.
+4. Create Google OAuth desktop credentials and save the file locally as `credentials.json`.
+5. Run the script:
 
 ```bash
 python script.py
 ```
 
-The first local run opens the Google OAuth consent flow. The generated `token.json` is intentionally excluded from Git.
+On the first local run, Google opens an OAuth consent flow. The generated `token.json` is kept out of Git.
 
 ## Configuration
 
@@ -101,9 +113,9 @@ The first local run opens the Google OAuth consent flow. The generated `token.js
 | `CCB_PASSWORD` | CCB API password |
 | `CCB_BASE_URL` | Base URL for the CCB API |
 | `GOOGLE_CALENDAR_ID` | Destination Google Calendar ID; defaults to `primary` |
-| `MINISTRY_EMAIL_MAP_JSON` | Optional JSON mapping from source resource/ministry names to calendar email addresses |
-| `GOOGLE_CREDENTIALS_FILE` | Optional OAuth client-credentials path |
-| `GOOGLE_TOKEN_FILE` | Optional stored-token path |
+| `MINISTRY_EMAIL_MAP_JSON` | Optional JSON mapping from CCB resource/ministry names to calendar email addresses |
+| `GOOGLE_CREDENTIALS_FILE` | Optional path to the Google OAuth credentials file |
+| `GOOGLE_TOKEN_FILE` | Optional path to the stored OAuth token |
 
 Example mapping:
 
@@ -115,20 +127,23 @@ Example mapping:
 
 ## GitHub Actions
 
-`examples/sync.yml` demonstrates the scheduled automation structure without including production secrets. For an actual deployment, credentials should be stored in GitHub Actions Secrets rather than committed to the repository.
+The private production version runs automatically through GitHub Actions. The `examples/sync.yml` file in this repository shows the general workflow structure without including production secrets.
+
+For a real deployment, API credentials, OAuth data, and calendar configuration should be stored in GitHub Actions Secrets instead of being committed to the repository.
 
 ## Security
 
-This repository intentionally contains **no production credentials or private event data**.
+This public repository does not include the production credentials or private organizational event data used by the original deployment.
 
-Files such as the following should remain private and are excluded from version control:
+The following files and values should stay private:
 
 - `.env`
 - `credentials.json`
 - `token.json`
-- production API credentials
-- production calendar identifiers and configuration
+- API usernames and passwords
+- production calendar IDs
+- private event data
 
-## Portfolio note
+## Note
 
-This repository is a sanitized version of a real automation project. Production-specific configuration, credentials, and organizational data remain private.
+This repository is meant to show the main design and implementation of the project while keeping the real deployment configuration and organizational data private.
