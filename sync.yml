@@ -1,0 +1,38 @@
+name: Sync CCB to Google Calendar
+
+on:
+  workflow_dispatch:
+  # Example production schedule:
+  # schedule:
+  #   - cron: "0 */2 * * *"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create Google OAuth files
+        shell: bash
+        run: |
+          printf '%s' '${{ secrets.GOOGLE_CREDENTIALS }}' > credentials.json
+          printf '%s' '${{ secrets.GOOGLE_TOKEN }}' > token.json
+
+      - name: Run calendar sync
+        env:
+          CCB_USERNAME: ${{ secrets.CCB_API_USERNAME }}
+          CCB_PASSWORD: ${{ secrets.CCB_API_PASSWORD }}
+          CCB_BASE_URL: ${{ secrets.CCB_BASE_URL }}
+          GOOGLE_CALENDAR_ID: ${{ secrets.GOOGLE_CALENDAR_ID }}
+          MINISTRY_EMAIL_MAP_JSON: ${{ secrets.MINISTRY_EMAIL_MAP_JSON }}
+        run: python script.py
