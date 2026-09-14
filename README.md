@@ -1,6 +1,6 @@
 # CCB / Pushpay to Google Calendar Sync
 
-This is a public, sanitized version of a Python project I built to sync event data from CCB/Pushpay into Google Calendar.
+This is a public, sanitized version of a Python project I delivered to sync event data from CCB/Pushpay into Google Calendar.
 
 The private version is used to keep an organizational calendar up to date without having to manually recreate the same events in Google Calendar. I removed production credentials, calendar IDs, event data, and other private configuration from this repository.
 
