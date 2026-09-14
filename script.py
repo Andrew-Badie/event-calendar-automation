@@ -2,6 +2,7 @@ import requests
 from dotenv import load_dotenv
 import os
 import json
+import re
 
 from lxml import etree
 from datetime import datetime
@@ -26,7 +27,7 @@ ORDINAL_MAPPING = {
     'second': '2',
     'third': '3',
     'fourth': '4',
-    'last': '5'
+    'last': '-1'
 }
 
 
@@ -96,9 +97,10 @@ def parse_events(response):
     event_list = []
 
     for event_element in event_all:
+        ministry_name = None
         location_elem = event_element.find("location")
         resources_elem = event_element.find("resources")
-        if resources_elem:
+        if resources_elem is not None and len(resources_elem) > 0:
             resource_elem = resources_elem.findall("resource")
 
             ministry_name = None
@@ -219,9 +221,9 @@ def format_datetime_for_google(datetime_string, timezone_string):
             '2025-10-08T09:00:00-04:00' in ISO 8601 format
         """
 
-    dt = datetime.strptime(datetime_string, '%Y-%m-%d %H:%M:%S')
     if not datetime_string:
-        raise ValueError("Missing start_datetime")
+        raise ValueError("Missing datetime")
+    dt = datetime.strptime(datetime_string, '%Y-%m-%d %H:%M:%S')
 
     tz = pytz.timezone(timezone_string)
     dt_with_tz = tz.localize(dt)
@@ -333,6 +335,8 @@ def extract_until_date(recurrence_description):
 
 
 def transform_ccb_event_to_google(ccb_event, ministry_email):
+    if not ccb_event.get('id') or not ccb_event.get('start_datetime') or not ccb_event.get('end_datetime'):
+        return None
     start_datetime_iso = format_datetime_for_google(ccb_event['start_datetime'], ccb_event['timezone'])
     end_datetime_iso = format_datetime_for_google(ccb_event['end_datetime'], ccb_event['timezone'])
 
@@ -476,8 +480,7 @@ def find_existing_event(service, ccb_event_id, calendar_id='primary'):
             return None  # No existing event found
 
     except Exception as e:
-        print(f"Failed to find event: {e}")
-        return None
+        raise RuntimeError("Calendar lookup failed; creation must not be attempted") from e
 
 
 def update_existing_event(service, event_id, google_event, calendar_id='primary'):
@@ -539,7 +542,12 @@ def sync_calendar(service, ccb_events, calendar_id='primary'):
         ministry_name = ccb_event.get('ministry')
         ministry_email = MINISTRY_MAPPING.get(ministry_name, None)
 
-        google_event = transform_ccb_event_to_google(ccb_event, ministry_email)
+        try:
+            google_event = transform_ccb_event_to_google(ccb_event, ministry_email)
+        except (ValueError, TypeError, KeyError, pytz.UnknownTimeZoneError):
+            stats['failed'] += 1
+            print("Failed to transform event: invalid date, timezone, or required field")
+            continue
 
         # Skip if tranformation failed
         if not google_event:
@@ -550,7 +558,12 @@ def sync_calendar(service, ccb_events, calendar_id='primary'):
         # Check if existing event found
 
         ccb_event_id = ccb_event.get('id')
-        existing_event = find_existing_event(service, ccb_event_id, calendar_id)
+        try:
+            existing_event = find_existing_event(service, ccb_event_id, calendar_id)
+        except RuntimeError:
+            stats['failed'] += 1
+            print("Lookup failed; skipped write for this event")
+            continue
 
         if existing_event:
             google_event_id = existing_event['id']
@@ -570,7 +583,7 @@ def sync_calendar(service, ccb_events, calendar_id='primary'):
                 print(f"Created {result['id']}")
                 stats['created'] += 1
             else:
-                print(f"Failed to create {result['id']}")
+                print("Failed to create event")
                 stats['failed'] += 1
     # Print Summary
     print(f"\n{'=' * 60}")
@@ -685,6 +698,8 @@ def convert_days_to_google_format(day_names):
         day_lower = day.lower()
         if day_lower in DAY_MAPPING:
             codes.append(DAY_MAPPING[day_lower])
+        elif re.fullmatch(r'-?[1-5](MO|TU|WE|TH|FR|SA|SU)', day.upper()):
+            codes.append(day.upper())
     return ','.join(codes) if codes else None
 
 
@@ -707,26 +722,31 @@ def convert_until_to_google_format(parsed_until):
     return google_until + 'T' + '235959Z'
 
 
-if __name__ == "__main__":
+def main():
+    import argparse
+    from pathlib import Path
+    from types import SimpleNamespace
 
-    # STep 1: Fetch Data from CCB Pushpay
-    print("Starting script")
-    print("Fetching CCB events")
+    parser = argparse.ArgumentParser(description="Synchronize CCB events to Google Calendar")
+    parser.add_argument('--dry-run', metavar='XML_FILE', help='Transform local XML without authentication or API calls')
+    args = parser.parse_args()
+    if args.dry_run:
+        events = parse_events(SimpleNamespace(content=Path(args.dry_run).read_bytes()))
+        payloads = []
+        for event in events:
+            payload = transform_ccb_event_to_google(event, None)
+            if payload is not None:
+                payloads.append(payload)
+        print(json.dumps(payloads, indent=2))
+        return
+
     response = fetch_events_from_ccb()
     ccb_events = parse_events(response)
-    # STep 2: Authenticate with Google Calendar
-    print("\n Authenticating with Google Calendar")
     service = get_google_calendar_authenticate()
-    print("Connected to Google Calendar")
-    # Step 3: Sync Events
     stats = sync_calendar(service, ccb_events, calendar_id=GOOGLE_CALENDAR_ID)
-    if stats['failed'] == 0:
-        print("All CCB events were processed without per-event failures.")
-    else:
+    if stats['failed']:
         raise SystemExit(f"Sync completed with {stats['failed']} errors")
 
 
-
-
-
-
+if __name__ == "__main__":
+    main()
