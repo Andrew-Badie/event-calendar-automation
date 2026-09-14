@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ccb_api><response><events>
+  <event id="demo-1">
+    <name>Synthetic gym session</name>
+    <start_datetime>2026-10-04 10:00:00</start_datetime>
+    <end_datetime>2026-10-04 11:00:00</end_datetime>
+    <timezone>America/Toronto</timezone>
+    <resources><resource><name>Example Ministry</name></resource></resources>
+    <recurrence_description>Every month on the first Sunday</recurrence_description>
+  </event>
+  <event id="demo-2">
+    <name>Synthetic meeting</name>
+    <start_datetime>2026-10-05 10:00:00</start_datetime>
+    <end_datetime>2026-10-05 11:00:00</end_datetime>
+  </event>
+  <event id="demo-3"><name>Empty resources</name><resources/></event>
+</events></response></ccb_api>

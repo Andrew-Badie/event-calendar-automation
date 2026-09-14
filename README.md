@@ -147,3 +147,21 @@ The following files and values should stay private:
 ## Note
 
 This repository is meant to show the main design and implementation of the project while keeping the real deployment configuration and organizational data private.
+
+
+## Offline demo and regression tests
+
+After installing requirements, run these commands without credentials:
+
+```bash
+python -m unittest discover -s tests -v
+python script.py --dry-run tests/fixtures/events.xml
+```
+
+The fixture contains synthetic events. Dry-run transforms local XML and prints candidate Google Calendar payloads; it does not authenticate, query existing calendars, or write events. It is not a live reconciliation preview.
+
+The public `Offline regression tests` workflow exercises missing resources, monthly ordinal recurrence, create/update selection, lookup failures, failed creation, and invalid dates with mocked APIs. The private scheduled synchronization is separate from this public CI workflow.
+
+A failed calendar lookup now skips the write and counts a failure rather than treating the event as absent. This reduces one duplicate risk; concurrent runs and ambiguous insert failures still require care. The public implementation creates and updates events; it does not reconcile deletions. Recurrence parsing supports selected text patterns, not every calendar rule.
+
+These regression fixes, tests, and the offline demo were added with AI assistance during the September 2026 portfolio review. They are later improvements to the original integration and do not establish that the private deployment has been updated or retested.
