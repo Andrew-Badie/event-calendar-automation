@@ -26,7 +26,7 @@ ORDINAL_MAPPING = {
     'second': '2',
     'third': '3',
     'fourth': '4',
-    'last': '5'
+    'last': '-1'
 }
 
 
@@ -98,9 +98,7 @@ def parse_events(response):
     for event_element in event_all:
         location_elem = event_element.find("location")
         resources_elem = event_element.find("resources")
-        if resources_elem:
-            resource_elem = resources_elem.findall("resource")
-
+        if resources_elem is not None and len(resources_elem) > 0:
             ministry_name = None
             for res in resources_elem:
                 res_name = res.findtext('name')
@@ -110,7 +108,7 @@ def parse_events(response):
             if not ministry_name and len(resources_elem) > 0:
                 ministry_name = resources_elem[0].findtext('name')
         else:
-            resource_elem = None
+            ministry_name = None
 
         event = {
             'id': event_element.get('id'),
@@ -219,9 +217,9 @@ def format_datetime_for_google(datetime_string, timezone_string):
             '2025-10-08T09:00:00-04:00' in ISO 8601 format
         """
 
-    dt = datetime.strptime(datetime_string, '%Y-%m-%d %H:%M:%S')
     if not datetime_string:
-        raise ValueError("Missing start_datetime")
+        raise ValueError("Missing datetime value")
+    dt = datetime.strptime(datetime_string, '%Y-%m-%d %H:%M:%S')
 
     tz = pytz.timezone(timezone_string)
     dt_with_tz = tz.localize(dt)
@@ -333,13 +331,13 @@ def extract_until_date(recurrence_description):
 
 
 def transform_ccb_event_to_google(ccb_event, ministry_email):
+    if not ccb_event.get('start_datetime') or not ccb_event.get('end_datetime'):
+        return None
+
     start_datetime_iso = format_datetime_for_google(ccb_event['start_datetime'], ccb_event['timezone'])
     end_datetime_iso = format_datetime_for_google(ccb_event['end_datetime'], ccb_event['timezone'])
 
     location_iso = format_location_for_google(ccb_event)
-
-    if not ccb_event.get('start_datetime') or not ccb_event.get('end_datetime'):
-        return None
 
     parts = []
 
@@ -358,7 +356,7 @@ def transform_ccb_event_to_google(ccb_event, ministry_email):
         description = None
 
     google_event = {
-        'summary': ccb_event.get('name', 'Untitled Event'),
+        'summary': ccb_event.get('name') or 'Untitled Event',
         'start': {
             'dateTime': start_datetime_iso,
             'timeZone': ccb_event['timezone']
@@ -535,7 +533,7 @@ def sync_calendar(service, ccb_events, calendar_id='primary'):
     print(f"{'=' * 60}")
 
     for index, ccb_event in enumerate(ccb_events, start=1):
-        print(f"[{index}/{stats['total']}] Processing: {ccb_event.get('name', 'Untitled')[:50]}")
+        print(f"[{index}/{stats['total']}] Processing: {(ccb_event.get('name') or 'Untitled')[:50]}")
         ministry_name = ccb_event.get('ministry')
         ministry_email = MINISTRY_MAPPING.get(ministry_name, None)
 
@@ -570,7 +568,7 @@ def sync_calendar(service, ccb_events, calendar_id='primary'):
                 print(f"Created {result['id']}")
                 stats['created'] += 1
             else:
-                print(f"Failed to create {result['id']}")
+                print(f"Failed to create event for CCB ID {ccb_event_id}")
                 stats['failed'] += 1
     # Print Summary
     print(f"\n{'=' * 60}")
@@ -681,10 +679,14 @@ def convert_days_to_google_format(day_names):
 
     codes = []
 
+    valid_codes = set(DAY_MAPPING.values())
     for day in day_names:
         day_lower = day.lower()
         if day_lower in DAY_MAPPING:
             codes.append(DAY_MAPPING[day_lower])
+        elif day[-2:].upper() in valid_codes and day[:-2].lstrip('-').isdigit():
+            # Already an ordinal BYDAY code from extract_day, e.g. '1SU' or '-1SA'
+            codes.append(day.upper())
     return ','.join(codes) if codes else None
 
 
@@ -724,9 +726,3 @@ if __name__ == "__main__":
         print("All CCB events were processed without per-event failures.")
     else:
         raise SystemExit(f"Sync completed with {stats['failed']} errors")
-
-
-
-
-
-

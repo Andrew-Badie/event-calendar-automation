@@ -1,5 +1,7 @@
 # CCB / Pushpay to Google Calendar Sync
 
+[![Tests](https://github.com/Andrew-Badie/event-calendar-automation/actions/workflows/tests.yml/badge.svg)](https://github.com/Andrew-Badie/event-calendar-automation/actions/workflows/tests.yml)
+
 This is a public, sanitized version of a Python project I delivered to sync event data from CCB/Pushpay into Google Calendar.
 
 The private version is used to keep an organizational calendar up to date without having to manually recreate the same events in Google Calendar. I removed production credentials, calendar IDs, event data, and other private configuration from this repository.
@@ -85,6 +87,21 @@ Not every possible recurrence format is handled by the current parser.
 - GitHub Actions
 - python-dotenv
 - pytz
+
+## Tests
+
+The parsing, transformation and sync logic is covered by a pytest suite (41 tests) that runs in GitHub Actions on every push. The Google Calendar API is replaced by an in-memory fake, so the tests need no credentials or network access. They cover:
+
+- recurrence text to `RRULE` conversion (weekly, multi-day, interval, daily, monthly ordinal such as "first Sunday" / "last Saturday")
+- `UNTIL` date extraction and timezone/DST-aware datetime formatting
+- CCB XML parsing, including application-level API errors
+- idempotent sync: running twice updates the same events instead of creating duplicates
+- skipped and failed events are counted without stopping the run
+
+```bash
+pip install -r requirements.txt pytest
+python -m pytest
+```
 
 ## Running it locally
 
