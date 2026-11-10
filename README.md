@@ -164,3 +164,7 @@ The following files and values should stay private:
 ## Note
 
 This repository is meant to show the main design and implementation of the project while keeping the real deployment configuration and organizational data private.
+
+## AI assistance
+
+The sync script is my own. The pytest suite, the CI workflow, several recurrence and sync bug fixes, and parts of this README were developed with AI assistance and are recorded in the commit history.
